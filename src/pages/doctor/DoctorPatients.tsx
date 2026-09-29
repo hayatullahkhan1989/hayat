@@ -141,7 +141,7 @@ export default function DoctorPatients() {
                   <div className="mb-6">
                     <h3 className="text-sm font-semibold text-gray-700 mb-2">Appointment History</h3>
                     <div className="space-y-2">
-                      {patientApts.slice(0, 5).map((apt) => (
+                      {patientAppts.slice(0, 5).map((apt) => (
                         <div key={apt.id} className="flex items-center justify-between rounded-lg bg-gray-50 p-3 text-sm">
                           <span className="text-gray-600">{formatDate(apt.date)}</span>
                           <span className="text-gray-600">{apt.reason}</span>

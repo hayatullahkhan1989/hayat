@@ -11,6 +11,7 @@ import type {
   ContactMessage,
 } from '@/types';
 import {
+  seedUsers,
   seedDoctors,
   seedAppointments,
   seedPrescriptions,
@@ -26,6 +27,11 @@ interface AppState {
   login: (role: Role, name: string) => void;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
+  // users
+  users: User[];
+  addUser: (user: Omit<User, 'id'>) => void;
+  updateUser: (id: string, updates: Partial<User>) => void;
+  removeUser: (id: string) => void;
   // doctors
   doctors: Doctor[];
   addDoctor: (doctor: Omit<Doctor, 'id'>) => void;
@@ -35,6 +41,7 @@ interface AppState {
   appointments: Appointment[];
   addAppointment: (apt: Omit<Appointment, 'id' | 'createdAt'>) => void;
   updateAppointment: (id: string, updates: Partial<Appointment>) => void;
+  removeAppointment: (id: string) => void;
   // prescriptions
   prescriptions: Prescription[];
   addPrescription: (pres: Omit<Prescription, 'id'>) => void;
@@ -61,6 +68,7 @@ const STORAGE_KEY = 'healthcare-plus-data';
 
 interface StoredData {
   currentUser: User | null;
+  users: User[];
   doctors: Doctor[];
   appointments: Appointment[];
   prescriptions: Prescription[];
@@ -77,6 +85,7 @@ function loadData(): StoredData {
       const parsed = JSON.parse(raw) as StoredData;
       return {
         currentUser: parsed.currentUser || null,
+        users: parsed.users?.length ? parsed.users : seedUsers,
         doctors: parsed.doctors?.length ? parsed.doctors : seedDoctors,
         appointments: parsed.appointments || seedAppointments,
         prescriptions: parsed.prescriptions || seedPrescriptions,
@@ -91,6 +100,7 @@ function loadData(): StoredData {
   }
   return {
     currentUser: null,
+    users: seedUsers,
     doctors: seedDoctors,
     appointments: seedAppointments,
     prescriptions: seedPrescriptions,
@@ -113,13 +123,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [data]);
 
   const login = (role: Role, name: string) => {
-    const user: User = {
-      id: genId('usr'),
-      name,
-      role,
-      active: true,
-    };
-    setData((prev) => ({ ...prev, currentUser: user }));
+    // Search for existing user with match
+    const existing = data.users.find(
+      (u) =>
+        u.role === role &&
+        (u.name.toLowerCase() === name.toLowerCase() ||
+          (role === 'doctor' && (u.name.toLowerCase() === `dr. ${name.toLowerCase()}` || name.toLowerCase() === `dr. ${u.name.toLowerCase()}`)))
+    );
+
+    if (existing) {
+      setData((prev) => ({ ...prev, currentUser: existing }));
+    } else {
+      const newUser: User = {
+        id: genId('usr'),
+        name: role === 'doctor' && !name.toLowerCase().startsWith('dr.') ? `Dr. ${name}` : name,
+        role,
+        email: `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@example.com`,
+        active: true,
+      };
+      setData((prev) => ({
+        ...prev,
+        currentUser: newUser,
+        users: [...prev.users, newUser],
+      }));
+    }
   };
 
   const logout = () => {
@@ -130,13 +157,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({
       ...prev,
       currentUser: prev.currentUser ? { ...prev.currentUser, ...updates } : null,
+      users: prev.currentUser
+        ? prev.users.map((u) => (u.id === prev.currentUser?.id ? { ...u, ...updates } : u))
+        : prev.users,
+    }));
+  };
+
+  const addUser = (user: Omit<User, 'id'>) => {
+    setData((prev) => ({
+      ...prev,
+      users: [...prev.users, { ...user, id: genId('usr') }],
+    }));
+  };
+
+  const updateUser = (id: string, updates: Partial<User>) => {
+    setData((prev) => ({
+      ...prev,
+      users: prev.users.map((u) => (u.id === id ? { ...u, ...updates } : u)),
+      currentUser: prev.currentUser?.id === id ? { ...prev.currentUser, ...updates } : prev.currentUser,
+    }));
+  };
+
+  const removeUser = (id: string) => {
+    setData((prev) => ({
+      ...prev,
+      users: prev.users.filter((u) => u.id !== id),
     }));
   };
 
   const addDoctor = (doctor: Omit<Doctor, 'id'>) => {
+    const newDocId = genId('doc');
+    const newDoc: Doctor = { ...doctor, id: newDocId };
+    const matchingUser: User = {
+      id: genId('usr'),
+      name: doctor.name.startsWith('Dr.') ? doctor.name : `Dr. ${doctor.name}`,
+      role: 'doctor',
+      email: `${doctor.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@hospital.com`,
+      active: doctor.active,
+    };
     setData((prev) => ({
       ...prev,
-      doctors: [...prev.doctors, { ...doctor, id: genId('doc') }],
+      doctors: [...prev.doctors, newDoc],
+      users: [...prev.users, matchingUser],
     }));
   };
 
@@ -167,6 +229,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({
       ...prev,
       appointments: prev.appointments.map((a) => (a.id === id ? { ...a, ...updates } : a)),
+    }));
+  };
+
+  const removeAppointment = (id: string) => {
+    setData((prev) => ({
+      ...prev,
+      appointments: prev.appointments.filter((a) => a.id !== id),
     }));
   };
 
@@ -231,6 +300,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     updateProfile,
+    users: data.users,
+    addUser,
+    updateUser,
+    removeUser,
     doctors: data.doctors,
     addDoctor,
     updateDoctor,
@@ -238,6 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     appointments: data.appointments,
     addAppointment,
     updateAppointment,
+    removeAppointment,
     prescriptions: data.prescriptions,
     addPrescription,
     medicalRecords: data.medicalRecords,
